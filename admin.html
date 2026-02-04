@@ -172,6 +172,24 @@
                 </div>
             </div>
 
+            <!-- App Password Section -->
+            <div class="password-section"
+                style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <h3 style="margin-bottom: 15px; font-size: 1rem;">🔐 Mini App Paroli</h3>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="newAppPassword" placeholder="Yangi parol"
+                        style="flex: 1; padding: 12px; border: none; border-radius: 8px; background: rgba(255,255,255,0.1); color: #fff;">
+                    <button onclick="changeAppPassword()"
+                        style="padding: 12px 20px; background: linear-gradient(135deg, #34c759, #30d158); border: none; border-radius: 8px; color: #fff; cursor: pointer;">
+                        O'zgartirish
+                    </button>
+                </div>
+                <div style="margin-top: 10px; font-size: 0.85rem; color: rgba(255,255,255,0.5);">
+                    Hozirgi parol: <span id="currentAppPassword" style="color: #34c759;">-</span>
+                </div>
+                <div id="passwordStatus" class="status hidden" style="margin-top: 10px;"></div>
+            </div>
+
             <button class="logout-btn" onclick="logout()">Chiqish</button>
         </div>
     </div>
@@ -284,6 +302,7 @@
                 const data = await res.json();
 
                 document.getElementById('agentCount').textContent = data.agents?.length || 0;
+                document.getElementById('currentAppPassword').textContent = data.appPassword || '1';
 
                 if (data.lastUpdated) {
                     const date = new Date(data.lastUpdated);
@@ -292,6 +311,46 @@
             } catch (err) {
                 console.error('Error loading data:', err);
             }
+        }
+
+        async function changeAppPassword() {
+            const newPassword = document.getElementById('newAppPassword').value.trim();
+            const statusEl = document.getElementById('passwordStatus');
+
+            if (!newPassword) {
+                statusEl.textContent = '❌ Parolni kiriting!';
+                statusEl.className = 'status error';
+                statusEl.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/app-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Password': adminPassword
+                    },
+                    body: JSON.stringify({ newPassword })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    statusEl.textContent = '✅ Parol o\'zgartirildi!';
+                    statusEl.className = 'status success';
+                    document.getElementById('currentAppPassword').textContent = newPassword;
+                    document.getElementById('newAppPassword').value = '';
+                } else {
+                    statusEl.textContent = '❌ ' + data.error;
+                    statusEl.className = 'status error';
+                }
+            } catch (err) {
+                statusEl.textContent = '❌ Server xatosi!';
+                statusEl.className = 'status error';
+            }
+
+            statusEl.classList.remove('hidden');
         }
     </script>
 </body>
