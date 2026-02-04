@@ -165,7 +165,6 @@ app.post('/api/upload', upload.array('files'), (req, res) => {
 
 // Serve admin page
 res.sendFile(path.join(__dirname, 'public'));
-    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 // Health check
@@ -183,4 +182,5 @@ app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Admin panel: http://localhost:${PORT}/admin`);
 });
+
 
