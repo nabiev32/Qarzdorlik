@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Qarzdorlik</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 1.8rem;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .login-form,
+        .upload-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        input[type="password"],
+        input[type="file"] {
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        button {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: scale(1.02);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .status.success {
+            background: rgba(52, 199, 89, 0.3);
+        }
+
+        .status.error {
+            background: rgba(255, 59, 48, 0.3);
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 5px;
+        }
+
+        .file-list {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .logout-btn {
+            background: rgba(255, 59, 48, 0.3);
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🔐 Admin Panel</h1>
+
+        <!-- Login Section -->
+        <div id="loginSection" class="card">
+            <form class="login-form" onsubmit="login(event)">
+                <input type="password" id="password" placeholder="Parolni kiriting..." required>
+                <button type="submit">Kirish</button>
+            </form>
+            <div id="loginStatus" class="status hidden"></div>
+        </div>
+
+        <!-- Upload Section -->
+        <div id="uploadSection" class="card hidden">
+            <h2 style="margin-bottom: 20px;">📤 Excel Yuklash</h2>
+            <form class="upload-form" onsubmit="uploadFiles(event)">
+                <input type="file" id="files" multiple accept=".xlsx,.xls" required>
+                <div id="fileList" class="file-list"></div>
+                <button type="submit" id="uploadBtn">Yuklash</button>
+            </form>
+            <div id="uploadStatus" class="status hidden"></div>
+
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-value" id="agentCount">0</div>
+                    <div class="stat-label">Agentlar</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" id="lastUpdate">-</div>
+                    <div class="stat-label">Oxirgi yangilanish</div>
+                </div>
+            </div>
+
+            <button class="logout-btn" onclick="logout()">Chiqish</button>
+        </div>
+    </div>
+
+    <script>
+        let adminPassword = '';
+
+        // Check if already logged in
+        const savedPassword = sessionStorage.getItem('adminPassword');
+        if (savedPassword) {
+            adminPassword = savedPassword;
+            showUploadSection();
+            loadCurrentData();
+        }
+
+        async function login(e) {
+            e.preventDefault();
+            const password = document.getElementById('password').value;
+            const statusEl = document.getElementById('loginStatus');
+
+            try {
+                const res = await fetch('/api/auth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+
+                if (res.ok) {
+                    adminPassword = password;
+                    sessionStorage.setItem('adminPassword', password);
+                    showUploadSection();
+                    loadCurrentData();
+                } else {
+                    statusEl.textContent = 'Noto\'g\'ri parol!';
+                    statusEl.className = 'status error';
+                    statusEl.classList.remove('hidden');
+                }
+            } catch (err) {
+                statusEl.textContent = 'Server xatosi!';
+                statusEl.className = 'status error';
+                statusEl.classList.remove('hidden');
+            }
+        }
+
+        function showUploadSection() {
+            document.getElementById('loginSection').classList.add('hidden');
+            document.getElementById('uploadSection').classList.remove('hidden');
+        }
+
+        function logout() {
+            sessionStorage.removeItem('adminPassword');
+            location.reload();
+        }
+
+        // Show selected files
+        document.getElementById('files').addEventListener('change', function (e) {
+            const fileList = document.getElementById('fileList');
+            const files = Array.from(e.target.files);
+            fileList.innerHTML = files.map(f => `📄 ${f.name}`).join('<br>');
+        });
+
+        async function uploadFiles(e) {
+            e.preventDefault();
+            const files = document.getElementById('files').files;
+            const statusEl = document.getElementById('uploadStatus');
+            const uploadBtn = document.getElementById('uploadBtn');
+
+            if (files.length === 0) return;
+
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Yuklanmoqda...';
+
+            const formData = new FormData();
+            for (let file of files) {
+                formData.append('files', file);
+            }
+
+            try {
+                const res = await fetch('/api/upload', {
+                    method: 'POST',
+                    headers: { 'X-Admin-Password': adminPassword },
+                    body: formData
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    statusEl.textContent = `✅ ${data.message}`;
+                    statusEl.className = 'status success';
+                    loadCurrentData();
+                    document.getElementById('files').value = '';
+                    document.getElementById('fileList').innerHTML = '';
+                } else {
+                    statusEl.textContent = '❌ ' + data.error;
+                    statusEl.className = 'status error';
+                }
+            } catch (err) {
+                statusEl.textContent = '❌ Server xatosi!';
+                statusEl.className = 'status error';
+            }
+
+            statusEl.classList.remove('hidden');
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'Yuklash';
+        }
+
+        async function loadCurrentData() {
+            try {
+                const res = await fetch('/api/data');
+                const data = await res.json();
+
+                document.getElementById('agentCount').textContent = data.agents?.length || 0;
+
+                if (data.lastUpdated) {
+                    const date = new Date(data.lastUpdated);
+                    document.getElementById('lastUpdate').textContent = date.toLocaleDateString('uz-UZ');
+                }
+            } catch (err) {
+                console.error('Error loading data:', err);
+            }
+        }
+    </script>
+</body>
+
+</html>
