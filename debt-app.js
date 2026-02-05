@@ -1,0 +1,554 @@
+// Debt Analytics Dashboard - READ-ONLY MODE
+// Fetches data from server API
+
+// Server API URL
+const API_URL = 'https://qarzdorlik.onrender.com';
+
+// App Password
+const APP_PASSWORD = '1';
+
+let agentsData = [];
+let previousData = null;
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function () {
+    // Initialize Telegram Web App
+    if (window.Telegram && window.Telegram.WebApp) {
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+
+        // Apply Telegram theme
+        document.body.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color || '#ffffff');
+        document.body.style.setProperty('--tg-theme-text-color', tg.themeParams.text_color || '#000000');
+    }
+
+    // Check if already logged in
+    if (sessionStorage.getItem('appLoggedIn') === 'true') {
+        showApp();
+    } else {
+        showLogin();
+    }
+});
+
+// Password check - fetch from server
+async function checkPassword(e) {
+    e.preventDefault();
+    const password = document.getElementById('appPassword').value;
+    const errorEl = document.getElementById('loginError');
+
+    try {
+        // Fetch current password from server
+        const res = await fetch(`${API_URL}/api/app-password`);
+        const data = await res.json();
+        const serverPassword = data.password || '1';
+
+        if (password === serverPassword) {
+            sessionStorage.setItem('appLoggedIn', 'true');
+            showApp();
+        } else {
+            errorEl.classList.remove('hidden');
+            document.getElementById('appPassword').value = '';
+        }
+    } catch (err) {
+        // Fallback to hardcoded password if server fails
+        if (password === APP_PASSWORD) {
+            sessionStorage.setItem('appLoggedIn', 'true');
+            showApp();
+        } else {
+            errorEl.classList.remove('hidden');
+            document.getElementById('appPassword').value = '';
+        }
+    }
+}
+
+// Show login screen
+function showLogin() {
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('loadingState').classList.add('hidden');
+    document.getElementById('emptyState').classList.add('hidden');
+    document.getElementById('dashboardContent').classList.add('hidden');
+}
+
+// Show app after login
+function showApp() {
+    document.getElementById('loginScreen').classList.add('hidden');
+    initSearch();
+    updateDate();
+    fetchExchangeRate();
+    loadData();
+}
+
+function updateDate() {
+    const now = new Date();
+    document.getElementById('currentDate').textContent = now.toLocaleDateString('uz-UZ');
+}
+
+// Fetch USD/UZS exchange rate from server
+async function fetchExchangeRate() {
+    try {
+        const res = await fetch(`${API_URL}/api/exchange-rate`);
+        const data = await res.json();
+
+        if (data.rate) {
+            const rate = parseFloat(data.rate).toLocaleString('uz-UZ');
+            document.getElementById('exchangeRate').textContent = `1$ = ${rate} so'm`;
+        }
+    } catch (err) {
+        console.log('Exchange rate fetch error:', err);
+        document.getElementById('exchangeRate').textContent = '1$ = ~12,900 so\'m';
+    }
+}
+
+// Fetch data from server
+async function loadData() {
+    showLoading();
+
+    try {
+        const res = await fetch(`${API_URL}/api/data`);
+        const data = await res.json();
+
+        if (data.agents && data.agents.length > 0) {
+            agentsData = data.agents;
+            previousData = data.previousData;
+            showDashboard();
+            updateStats();
+            renderCharts();
+            renderTable();
+        } else {
+            showEmpty();
+        }
+    } catch (err) {
+        console.error('Error loading data:', err);
+        // Debug: show actual error
+        if (window.Telegram && window.Telegram.WebApp) {
+            alert('API Error: ' + err.message + '\nURL: ' + API_URL);
+        }
+        showEmpty();
+    }
+}
+
+function showLoading() {
+    document.getElementById('loadingState').classList.remove('hidden');
+    document.getElementById('emptyState').classList.add('hidden');
+    document.getElementById('dashboardContent').classList.add('hidden');
+}
+
+function showEmpty() {
+    document.getElementById('loadingState').classList.add('hidden');
+    document.getElementById('emptyState').classList.remove('hidden');
+    document.getElementById('dashboardContent').classList.add('hidden');
+}
+
+function showDashboard() {
+    document.getElementById('loadingState').classList.add('hidden');
+    document.getElementById('emptyState').classList.add('hidden');
+    document.getElementById('dashboardContent').classList.remove('hidden');
+}
+
+function updateStats() {
+    const totalAgents = agentsData.length;
+    const totalDebtors = agentsData.reduce((sum, a) => sum + a.debtorCount, 0);
+    const totalUSD = agentsData.reduce((sum, a) => sum + a.totalUSD, 0);
+    const totalUZS = agentsData.reduce((sum, a) => sum + a.totalUZS, 0);
+
+    animateValue('totalAgents', totalAgents);
+    animateValue('totalDebtors', totalDebtors);
+    animateValue('totalUSD', totalUSD, '$');
+    animateValue('totalUZS', totalUZS, 'UZS');
+}
+
+function animateValue(id, value, prefix = '') {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    const duration = 1000;
+    const startTime = performance.now();
+
+    function update(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const current = value * progress;
+
+        if (prefix === '$') {
+            el.textContent = '$' + current.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        } else if (prefix === 'UZS') {
+            el.textContent = Math.floor(current).toLocaleString('uz-UZ');
+        } else {
+            el.textContent = Math.floor(current).toLocaleString('uz-UZ');
+        }
+
+        if (progress < 1) requestAnimationFrame(update);
+    }
+
+    requestAnimationFrame(update);
+}
+
+function renderCharts() {
+    renderBarChart('agentChartUSD', 'totalUSD', '$', '#34c759');
+    renderBarChart('agentChartUZS', 'totalUZS', 'UZS', '#ff3b30');
+    renderPieChart('pieChartUSD', 'totalUSD');
+    renderPieChart('pieChartUZS', 'totalUZS');
+}
+
+function renderBarChart(canvasId, field, prefix, color) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+
+    const existingChart = Chart.getChart(ctx);
+    if (existingChart) existingChart.destroy();
+
+    const sorted = [...agentsData].sort((a, b) => b[field] - a[field]).filter(a => a[field] > 0);
+
+    if (sorted.length === 0) {
+        ctx.parentElement.innerHTML = '<p style="text-align:center;color:#86868b;padding:60px;">Ma\'lumot yo\'q</p>';
+        return;
+    }
+
+    const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 250);
+    gradient.addColorStop(0, color + 'cc');
+    gradient.addColorStop(1, color + '33');
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: sorted.map(a => a.name),
+            datasets: [{
+                data: sorted.map(a => a[field]),
+                backgroundColor: gradient,
+                borderRadius: 6,
+                borderSkipped: false
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#fff',
+                    titleColor: '#1d1d1f',
+                    bodyColor: '#6e6e73',
+                    borderColor: 'rgba(0,0,0,0.1)',
+                    borderWidth: 1,
+                    cornerRadius: 10,
+                    padding: 12,
+                    callbacks: {
+                        label: (ctx) => prefix === '$'
+                            ? '$' + ctx.parsed.y.toLocaleString('en-US', { minimumFractionDigits: 2 })
+                            : ctx.parsed.y.toLocaleString('uz-UZ') + ' so\'m'
+                    }
+                }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#86868b', font: { size: 10 } } },
+                y: {
+                    grid: { color: 'rgba(0,0,0,0.04)' },
+                    ticks: {
+                        color: '#86868b',
+                        callback: (v) => prefix === '$' ? '$' + v : (v / 1000000).toFixed(1) + 'M'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderPieChart(canvasId, field) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+
+    const existingChart = Chart.getChart(ctx);
+    if (existingChart) existingChart.destroy();
+
+    const colors = ['#ff3b30', '#ff9f0a', '#34c759', '#0071e3', '#bf4dff', '#ff2d55'];
+    const top5 = [...agentsData].sort((a, b) => b[field] - a[field]).filter(a => a[field] > 0).slice(0, 5);
+
+    if (top5.length === 0) {
+        ctx.parentElement.innerHTML = '<p style="text-align:center;color:#86868b;padding:40px;">Ma\'lumot yo\'q</p>';
+        return;
+    }
+
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: top5.map(a => a.name),
+            datasets: [{
+                data: top5.map(a => a[field]),
+                backgroundColor: colors,
+                borderWidth: 0,
+                hoverOffset: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '60%',
+            plugins: {
+                legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, font: { size: 10 } } }
+            }
+        }
+    });
+}
+
+// Currency filter
+let currentCurrencyFilter = 'all';
+
+function showDebtorsList(currency) {
+    currentCurrencyFilter = currency;
+
+    document.querySelectorAll('.debtors-tab').forEach((btn, i) => {
+        btn.classList.remove('active');
+        if ((currency === 'all' && i === 0) ||
+            (currency === 'usd' && i === 1) ||
+            (currency === 'uzs' && i === 2)) {
+            btn.classList.add('active');
+        }
+    });
+
+    const usdTab = document.getElementById('usdTab');
+    const uzsTab = document.getElementById('uzsTab');
+
+    if (currency === 'uzs') {
+        usdTab.classList.add('hidden');
+        uzsTab.classList.remove('hidden');
+    } else {
+        usdTab.classList.remove('hidden');
+        uzsTab.classList.add('hidden');
+    }
+
+    renderTableFiltered(currency);
+}
+
+function renderTable(filter = '') {
+    renderTableFiltered('all', filter);
+}
+
+function renderTableFiltered(currency, searchFilter = '') {
+    const tbody = document.getElementById('agentsTableBody');
+
+    let filtered = [...agentsData];
+
+    if (searchFilter) {
+        filtered = filtered.filter(a => a.name.toLowerCase().includes(searchFilter.toLowerCase()));
+    }
+
+    if (currency === 'usd') {
+        filtered = filtered.filter(a => a.totalUSD > 0);
+        filtered.sort((a, b) => b.totalUSD - a.totalUSD);
+    } else if (currency === 'uzs') {
+        filtered = filtered.filter(a => a.totalUZS > 0);
+        filtered.sort((a, b) => b.totalUZS - a.totalUZS);
+    } else {
+        filtered.sort((a, b) => (b.totalUSD + b.totalUZS) - (a.totalUSD + a.totalUZS));
+    }
+
+    tbody.innerHTML = filtered.map((agent, i) => {
+        const showUSD = currency === 'all' || currency === 'usd';
+        const showUZS = currency === 'all' || currency === 'uzs';
+
+        // Format numbers for mobile - shorter format
+        const formatUSD = (val) => {
+            if (val >= 1000000) return '$' + (val / 1000000).toFixed(1) + 'M';
+            if (val >= 1000) return '$' + (val / 1000).toFixed(1) + 'K';
+            return '$' + val.toFixed(0);
+        };
+
+        const formatUZS = (val) => {
+            if (val >= 1000000) return (val / 1000000).toFixed(1) + 'M';
+            if (val >= 1000) return (val / 1000).toFixed(0) + 'K';
+            return val.toFixed(0);
+        };
+
+        return `
+            <tr class="clickable-row" onclick="showAgentDetails('${agent.name.replace(/'/g, "\\'")}')">
+                <td>${i + 1}</td>
+                <td><strong>${agent.name}</strong></td>
+                <td>${agent.debtorCount}</td>
+                <td class="usd-amount">${showUSD ? formatUSD(agent.totalUSD) : '-'}</td>
+                <td class="uzs-amount">${showUZS ? formatUZS(agent.totalUZS) : '-'}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function initSearch() {
+    const searchInput = document.getElementById('searchAgent');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => renderTableFiltered(currentCurrencyFilter, e.target.value));
+    }
+}
+
+// Modal Functions
+// Normalize name for comparison
+function normalizeName(name) {
+    if (!name) return '';
+    return String(name).toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function showAgentDetails(agentName) {
+    const agent = agentsData.find(a => a.name === agentName);
+    if (!agent) return;
+
+    // Find previous agent data for comparison
+    let prevAgent = null;
+    if (previousData) {
+        prevAgent = previousData.find(a => normalizeName(a.name) === normalizeName(agentName));
+    }
+
+    document.getElementById('modalAgentName').textContent = agent.name;
+    document.getElementById('modalDebtorCount').textContent = agent.debtorCount;
+    document.getElementById('modalTotalUSD').textContent = '$' + agent.totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2 });
+    document.getElementById('modalTotalUZS').textContent = agent.totalUZS.toLocaleString('uz-UZ');
+
+    const sortedDebtors = [...agent.debtors].sort((a, b) => (b.usd + b.uzs) - (a.usd + a.uzs));
+
+    const tbody = document.getElementById('modalTableBody');
+    tbody.innerHTML = sortedDebtors.map((debtor, i) => {
+        // Calculate change from previous data
+        let changeHtml = '';
+        if (prevAgent) {
+            // Find matching debtor by normalized name
+            const normalizedDebtorName = normalizeName(debtor.name);
+            const prevDebtor = prevAgent.debtors.find(d => normalizeName(d.name) === normalizedDebtorName);
+
+            if (prevDebtor) {
+                const usdChange = debtor.usd - prevDebtor.usd;
+                const uzsChange = debtor.uzs - prevDebtor.uzs;
+
+                // Only show significant changes (min $10 or 100,000 UZS)
+                if (usdChange > 10) {
+                    changeHtml = `<span class="change increase">▲ +$${Math.round(usdChange)}</span>`;
+                } else if (usdChange < -10) {
+                    changeHtml = `<span class="change decrease">▼ -$${Math.round(Math.abs(usdChange))}</span>`;
+                } else if (uzsChange > 100000) {
+                    changeHtml = `<span class="change increase">▲ +${Math.round(uzsChange).toLocaleString('uz-UZ')}</span>`;
+                } else if (uzsChange < -100000) {
+                    changeHtml = `<span class="change decrease">▼ -${Math.round(Math.abs(uzsChange)).toLocaleString('uz-UZ')}</span>`;
+                }
+            } else {
+                // New debtor
+                changeHtml = `<span class="change increase">🆕 Yangi</span>`;
+            }
+        }
+
+        return `
+        <tr>
+            <td>${i + 1}</td>
+            <td>${debtor.name} ${changeHtml}</td>
+            <td class="usd-amount">${debtor.usd > 0 ? '$' + debtor.usd.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-'}</td>
+            <td class="uzs-amount">${debtor.uzs > 0 ? debtor.uzs.toLocaleString('uz-UZ') : '-'}</td>
+        </tr>
+    `;
+    }).join('');
+
+    document.getElementById('clientModal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+    document.getElementById('clientModal').classList.add('hidden');
+    document.body.style.overflow = '';
+}
+
+// Close modal on Escape
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeModal();
+        closePaymentsModal();
+    }
+});
+
+// Show payments - clients who paid (debt decreased)
+function showPayments(currency) {
+    if (!previousData || previousData.length === 0) {
+        alert("Oldingi ma'lumotlar mavjud emas. Kamida 2 marta Excel yuklash kerak.");
+        return;
+    }
+
+    const payments = [];
+    let totalPayment = 0;
+
+    // Compare current data with previous data
+    for (const agent of agentsData) {
+        const prevAgent = previousData.find(a => normalizeName(a.name) === normalizeName(agent.name));
+        if (!prevAgent) continue;
+
+        for (const debtor of agent.debtors) {
+            const prevDebtor = prevAgent.debtors.find(d => normalizeName(d.name) === normalizeName(debtor.name));
+            if (!prevDebtor) continue;
+
+            let payment = 0;
+            if (currency === 'usd') {
+                payment = prevDebtor.usd - debtor.usd;
+            } else {
+                payment = prevDebtor.uzs - debtor.uzs;
+            }
+
+            // If payment > 0, debt decreased (client paid)
+            if (payment > 0.01) {
+                payments.push({
+                    agent: agent.name,
+                    client: debtor.name,
+                    payment: payment,
+                    currency: currency
+                });
+                totalPayment += payment;
+            }
+        }
+    }
+
+    // Sort by payment amount (highest first)
+    payments.sort((a, b) => b.payment - a.payment);
+
+    // Update modal
+    const titleEl = document.getElementById('paymentsModalTitle');
+    const countEl = document.getElementById('paymentsCount');
+    const totalEl = document.getElementById('paymentsTotalAmount');
+    const tbody = document.getElementById('paymentsTableBody');
+    const noPaymentsEl = document.getElementById('noPaymentsMessage');
+    const tableWrapper = document.querySelector('#paymentsModal .modal-table-wrapper');
+
+    if (currency === 'usd') {
+        titleEl.textContent = "💵 USD To'lovlar";
+        totalEl.textContent = '$' + totalPayment.toLocaleString('en-US', { minimumFractionDigits: 2 });
+        totalEl.parentElement.classList.remove('uzs');
+        totalEl.parentElement.classList.add('usd');
+    } else {
+        titleEl.textContent = "🇺🇿 UZS To'lovlar";
+        totalEl.textContent = totalPayment.toLocaleString('uz-UZ') + " so'm";
+        totalEl.parentElement.classList.remove('usd');
+        totalEl.parentElement.classList.add('uzs');
+    }
+
+    countEl.textContent = payments.length;
+
+    if (payments.length === 0) {
+        noPaymentsEl.classList.remove('hidden');
+        tableWrapper.classList.add('hidden');
+    } else {
+        noPaymentsEl.classList.add('hidden');
+        tableWrapper.classList.remove('hidden');
+
+        tbody.innerHTML = payments.map((p, i) => `
+            <tr>
+                <td>${i + 1}</td>
+                <td>${p.agent}</td>
+                <td>${p.client}</td>
+                <td class="${currency === 'usd' ? 'usd-amount' : 'uzs-amount'}">
+                    ${currency === 'usd'
+                ? '$' + p.payment.toLocaleString('en-US', { minimumFractionDigits: 2 })
+                : p.payment.toLocaleString('uz-UZ')}
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    document.getElementById('paymentsModal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+}
+
+function closePaymentsModal() {
+    document.getElementById('paymentsModal').classList.add('hidden');
+    document.body.style.overflow = '';
+}

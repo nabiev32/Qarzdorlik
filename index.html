@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Qarzdorlik Analitikasi</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="debt-styles.css">
+    <!-- Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="app">
+        <!-- Main Content (No Sidebar for Mobile) -->
+        <main class="main-content full-width">
+            <header class="header">
+                <div class="header-left">
+                    <h1 class="page-title">Qarzdorlik Dashboard</h1>
+                    <p class="page-subtitle">Agent va qarzdorlar analitikasi (USD + UZS)</p>
+                </div>
+                <div class="header-right">
+                    <div class="date-display">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2" />
+                            <line x1="16" y1="2" x2="16" y2="6" />
+                            <line x1="8" y1="2" x2="8" y2="6" />
+                            <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                        <span id="currentDate">-</span>
+                    </div>
+                    <div class="exchange-rate">
+                        💱 <span id="exchangeRate">1$ = ...</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Login Screen -->
+            <div id="loginScreen" class="login-screen">
+                <div class="login-card">
+                    <div class="login-icon">🔐</div>
+                    <h2>Qarzdorlik Dashboard</h2>
+                    <p>Kirish uchun parolni kiriting</p>
+                    <form onsubmit="checkPassword(event)">
+                        <input type="password" id="appPassword" placeholder="Parol" required autocomplete="off">
+                        <button type="submit" class="login-btn">Kirish</button>
+                    </form>
+                    <div id="loginError" class="login-error hidden">Noto'g'ri parol!</div>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loadingState" class="loading-state hidden">
+                <div class="spinner"></div>
+                <p>Ma'lumotlar yuklanmoqda...</p>
+            </div>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="empty-state hidden">
+                <div class="empty-icon">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.5">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                    </svg>
+                </div>
+                <h2>Ma'lumotlar topilmadi</h2>
+                <p>Serverda hali ma'lumot yo'q</p>
+                <button class="primary-btn" onclick="loadData()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 4v6h-6"></path>
+                        <path d="M1 20v-6h6"></path>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                    </svg>
+                    Yangilash
+                </button>
+            </div>
+
+            <!-- Dashboard Content -->
+            <div id="dashboardContent" class="dashboard-content hidden">
+                <!-- Payment Buttons -->
+                <div class="payment-buttons">
+                    <button class="payment-btn usd-payment" onclick="showPayments('usd')">
+                        💵 USD to'lovlar
+                    </button>
+                    <button class="payment-btn uzs-payment" onclick="showPayments('uzs')">
+                        🇺🇿 UZS to'lovlar
+                    </button>
+                </div>
+
+                <!-- Stats Cards -->
+                <section class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon blue">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                <circle cx="9" cy="7" r="4" />
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="totalAgents">0</span>
+                            <span class="stat-label">Jami agentlar</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon purple">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                <circle cx="8.5" cy="7" r="4" />
+                                <path d="M20 8v6" />
+                                <path d="M23 11h-6" />
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="totalDebtors">0</span>
+                            <span class="stat-label">Jami qarzdorlar</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card usd-card">
+                        <div class="stat-icon green">
+                            <span class="currency-symbol">$</span>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="totalUSD">$0</span>
+                            <span class="stat-label">Jami qarz (USD)</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card uzs-card">
+                        <div class="stat-icon red">
+                            <span class="currency-symbol">S</span>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="totalUZS">0</span>
+                            <span class="stat-label">Jami qarz (UZS)</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Currency Tabs -->
+                <div class="tabs-container">
+                    <div class="tabs">
+                        <button class="tab-btn debtors-tab active" onclick="showDebtorsList('all')">📊 Umumiy</button>
+                        <button class="tab-btn debtors-tab" onclick="showDebtorsList('usd')">💵 USD</button>
+                        <button class="tab-btn debtors-tab" onclick="showDebtorsList('uzs')">🇺🇿 UZS</button>
+                    </div>
+                </div>
+
+                <!-- USD Charts -->
+                <div id="usdTab" class="tab-content">
+                    <section class="charts-section">
+                        <div class="chart-card main-chart">
+                            <div class="chart-header">
+                                <h3>💵 Agentlar bo'yicha qarz (USD)</h3>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="agentChartUSD"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Qarz taqsimoti (USD)</h3>
+                            </div>
+                            <div class="chart-container pie-container">
+                                <canvas id="pieChartUSD"></canvas>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- UZS Charts -->
+                <div id="uzsTab" class="tab-content hidden">
+                    <section class="charts-section">
+                        <div class="chart-card main-chart">
+                            <div class="chart-header">
+                                <h3>🇺🇿 Agentlar bo'yicha qarz (UZS)</h3>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="agentChartUZS"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Qarz taqsimoti (UZS)</h3>
+                            </div>
+                            <div class="chart-container pie-container">
+                                <canvas id="pieChartUZS"></canvas>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Agents Table -->
+                <section class="table-section">
+                    <div class="table-card">
+                        <div class="table-header">
+                            <h3>Agentlar ro'yxati</h3>
+                            <div class="search-box">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <circle cx="11" cy="11" r="8" />
+                                    <path d="m21 21-4.35-4.35" />
+                                </svg>
+                                <input type="text" id="searchAgent" placeholder="Qidirish...">
+                            </div>
+                        </div>
+                        <div class="table-wrapper">
+                            <table id="agentsTable">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Agent nomi</th>
+                                        <th>Qarzdorlar</th>
+                                        <th>💵 USD</th>
+                                        <th>🇺🇿 UZS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="agentsTableBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Client Details Modal -->
+    <div id="clientModal" class="modal hidden">
+        <div class="modal-overlay" onclick="closeModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalAgentName">Agent nomi</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-stats">
+                <div class="modal-stat">
+                    <span class="modal-stat-value" id="modalDebtorCount">0</span>
+                    <span class="modal-stat-label">Qarzdorlar</span>
+                </div>
+                <div class="modal-stat usd">
+                    <span class="modal-stat-value" id="modalTotalUSD">$0</span>
+                    <span class="modal-stat-label">Jami USD</span>
+                </div>
+                <div class="modal-stat uzs">
+                    <span class="modal-stat-value" id="modalTotalUZS">0</span>
+                    <span class="modal-stat-label">Jami UZS</span>
+                </div>
+            </div>
+            <div class="modal-table-wrapper">
+                <table class="modal-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Klient nomi</th>
+                            <th>💵 USD</th>
+                            <th>🇺🇿 UZS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modalTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payments Modal -->
+    <div id="paymentsModal" class="modal hidden">
+        <div class="modal-overlay" onclick="closePaymentsModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="paymentsModalTitle">💵 USD To'lovlar</h2>
+                <button class="modal-close" onclick="closePaymentsModal()">&times;</button>
+            </div>
+            <div class="modal-stats">
+                <div class="modal-stat">
+                    <span class="modal-stat-value" id="paymentsCount">0</span>
+                    <span class="modal-stat-label">To'lov qilganlar</span>
+                </div>
+                <div class="modal-stat usd">
+                    <span class="modal-stat-value" id="paymentsTotalAmount">$0</span>
+                    <span class="modal-stat-label">Jami to'lov</span>
+                </div>
+            </div>
+            <div class="modal-table-wrapper">
+                <table class="modal-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Agent</th>
+                            <th>Klient</th>
+                            <th>To'lov</th>
+                        </tr>
+                    </thead>
+                    <tbody id="paymentsTableBody">
+                    </tbody>
+                </table>
+            </div>
+            <div id="noPaymentsMessage" class="no-payments hidden">
+                <p>📭 Hozircha to'lov qilgan klientlar yo'q</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="debt-app.js?v=20260205"></script>
+</body>
+
+</html>
