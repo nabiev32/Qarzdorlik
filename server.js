@@ -27,12 +27,17 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 function loadData() {
     try {
         if (fs.existsSync(DATA_FILE)) {
-            return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+            const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+            // Ensure appPassword exists
+            if (!data.appPassword) {
+                data.appPassword = '1';
+            }
+            return data;
         }
     } catch (e) {
         console.error('Error loading data:', e);
     }
-    return { agents: [], lastUpdated: null, previousData: null };
+    return { agents: [], lastUpdated: null, previousData: null, appPassword: '1' };
 }
 
 // Save data
@@ -131,6 +136,51 @@ app.get('/api/data', (req, res) => {
     res.json(dashboardData);
 });
 
+// Get app password (for Mini App login)
+app.get('/api/app-password', (req, res) => {
+    res.json({ password: dashboardData.appPassword || '1' });
+});
+
+// Update app password (admin only)
+app.post('/api/app-password', (req, res) => {
+    const adminPass = req.headers['x-admin-password'];
+    if (adminPass !== ADMIN_PASSWORD) {
+        return res.status(401).json({ error: 'Ruxsat yo\'q' });
+    }
+
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 1) {
+        return res.status(400).json({ error: 'Parol bo\'sh bo\'lmasligi kerak' });
+    }
+
+    dashboardData.appPassword = newPassword;
+    saveData(dashboardData);
+    res.json({ success: true, message: 'Parol o\'zgartirildi' });
+});
+
+// Set exchange rate (admin only)
+app.post('/api/exchange-rate', (req, res) => {
+    const password = req.headers['x-admin-password'];
+
+    if (password !== ADMIN_PASSWORD) {
+        return res.status(401).json({ error: 'Ruxsat yo\'q' });
+    }
+
+    const { rate } = req.body;
+    if (!rate || isNaN(rate)) {
+        return res.status(400).json({ error: 'Kurs noto\'g\'ri' });
+    }
+
+    dashboardData.exchangeRate = parseFloat(rate);
+    saveData(dashboardData);
+    res.json({ success: true, message: 'Kurs o\'zgartirildi' });
+});
+
+// Get exchange rate
+app.get('/api/exchange-rate', (req, res) => {
+    res.json({ rate: dashboardData.exchangeRate || 12900 });
+});
+
 // Admin authentication check
 app.post('/api/auth', (req, res) => {
     const { password } = req.body;
@@ -165,7 +215,7 @@ app.post('/api/upload', upload.array('files'), (req, res) => {
 
 // Serve admin page
 app.get('/admin', (req, res) => {
-    res.sendFile(path.join(__dirname, 'admin.html'));
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 // Health check
@@ -183,7 +233,3 @@ app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Admin panel: http://localhost:${PORT}/admin`);
 });
-
-
-
-
