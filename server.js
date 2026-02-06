@@ -98,7 +98,27 @@ function processExcelFiles(files) {
                         totalUZS += uzs;
                         debtorCount++;
 
-                        const name = row[1] || `Qarzdor ${debtorCount}`;
+                        // Klient nomini topish - turli ustun strukturalarini qo'llab-quvvatlash
+                        let name = null;
+
+                        // A, B, C ustunlaridan birinchi matnli qiymatni topish
+                        for (let col = 0; col <= 2; col++) {
+                            const cellValue = row[col];
+                            // Agar qiymat string va kamida 2 ta harf bo'lsa
+                            if (typeof cellValue === 'string' && cellValue.trim().length >= 2) {
+                                // Faqat raqamdan iborat bo'lmagan stringni olish
+                                if (!/^\d+$/.test(cellValue.trim())) {
+                                    name = cellValue.trim();
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Agar nom topilmasa, default nom berish
+                        if (!name) {
+                            name = `Qarzdor ${debtorCount}`;
+                        }
+
                         debtors.push({ name: String(name), usd, uzs });
                     }
                 }
