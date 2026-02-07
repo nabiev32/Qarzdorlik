@@ -64,9 +64,18 @@ async function loadFromCloud() {
 async function saveToCloud(data) {
     if (!JSONBIN_API_URL || !JSONBIN_API_KEY) return false;
     try {
-        // previousData ni olib tashlash (hajmni kamaytirish, JSONBin 100KB limit)
+        // previousData ni ixcham saqlash (faqat agent nomlari va jami summalar)
+        // Bu qarz o'zgarishini ko'rsatish uchun kerak, lekin hajmni kamaytiradi
         const cloudData = { ...data };
-        delete cloudData.previousData;
+        if (cloudData.previousData && Array.isArray(cloudData.previousData)) {
+            cloudData.previousData = cloudData.previousData.map(a => ({
+                name: a.name,
+                totalUSD: a.totalUSD || 0,
+                totalUZS: a.totalUZS || 0,
+                debtorCount: a.debtorCount || 0,
+                debtors: [] // debtors ro'yxatini olib tashlash (hajmni kamaytirish)
+            }));
+        }
 
         const res = await fetch(JSONBIN_API_URL, {
             method: 'PUT',
