@@ -36,6 +36,9 @@
                     <div class="exchange-rate">
                         💱 <span id="exchangeRate">1$ = ...</span>
                     </div>
+                    <div class="updated-date">
+                        🔄 Yangilangan: <span id="lastUpdatedDate">—</span>
+                    </div>
                 </div>
             </header>
 
@@ -130,6 +133,7 @@
                         </div>
                         <div class="stat-info">
                             <span class="stat-value" id="totalUSD">$0</span>
+                            <span class="stat-change" id="changeUSD"></span>
                             <span class="stat-label">Jami qarz (USD)</span>
                         </div>
                     </div>
@@ -140,6 +144,7 @@
                         </div>
                         <div class="stat-info">
                             <span class="stat-value" id="totalUZS">0</span>
+                            <span class="stat-change" id="changeUZS"></span>
                             <span class="stat-label">Jami qarz (UZS)</span>
                         </div>
                     </div>
@@ -312,7 +317,7 @@
         </div>
     </div>
 
-    <script src="debt-app.js?v=20260205"></script>
+    <script src="debt-app.js?v=20260207"></script>
 </body>
 
 </html>

@@ -9,6 +9,7 @@ const APP_PASSWORD = '1';
 
 let agentsData = [];
 let previousData = null;
+let allHistoricalData = []; // Barcha yuklangan excel ma'lumotlari
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function () {
@@ -84,6 +85,22 @@ function updateDate() {
     document.getElementById('currentDate').textContent = now.toLocaleDateString('uz-UZ');
 }
 
+function updateLastUpdatedDate(isoDate) {
+    const el = document.getElementById('lastUpdatedDate');
+    if (!el) return;
+    if (!isoDate) {
+        el.textContent = 'Ma\'lumot yo\'q';
+        return;
+    }
+    const d = new Date(isoDate);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    el.textContent = `${day}.${month}.${year} ${hours}:${minutes}`;
+}
+
 // Fetch USD/UZS exchange rate from server
 async function fetchExchangeRate() {
     try {
@@ -111,20 +128,112 @@ async function loadData() {
         if (data.agents && data.agents.length > 0) {
             agentsData = data.agents;
             previousData = data.previousData;
+
+            // Ma'lumotlarni localStorage'da saqlash
+            saveDataToLocalStorage(data);
+
+            updateLastUpdatedDate(data.lastUpdated);
             showDashboard();
             updateStats();
             renderCharts();
             renderTable();
         } else {
-            showEmpty();
+            // Server ma'lumot bermasa, localStorage'dan yuklab ko'ramiz
+            const cachedData = loadDataFromLocalStorage();
+            if (cachedData && cachedData.agents && cachedData.agents.length > 0) {
+                agentsData = cachedData.agents;
+                previousData = cachedData.previousData;
+                updateLastUpdatedDate(cachedData.lastUpdated || cachedData.savedAt);
+                showDashboard();
+                updateStats();
+                renderCharts();
+                renderTable();
+            } else {
+                showEmpty();
+            }
         }
     } catch (err) {
         console.error('Error loading data:', err);
-        // Debug: show actual error
-        if (window.Telegram && window.Telegram.WebApp) {
-            alert('API Error: ' + err.message + '\nURL: ' + API_URL);
+
+        // Server xatosi bo'lsa, localStorage'dan yuklaymiz
+        const cachedData = loadDataFromLocalStorage();
+        if (cachedData && cachedData.agents && cachedData.agents.length > 0) {
+            agentsData = cachedData.agents;
+            previousData = cachedData.previousData;
+            updateLastUpdatedDate(cachedData.lastUpdated || cachedData.savedAt);
+            showDashboard();
+            updateStats();
+            renderCharts();
+            renderTable();
+            console.log('Server bilan bog\'lanib bo\'lmadi, cached data ishlatilmoqda');
+        } else {
+            if (window.Telegram && window.Telegram.WebApp) {
+                alert('API Error: ' + err.message + '\nURL: ' + API_URL);
+            }
+            showEmpty();
         }
-        showEmpty();
+    }
+}
+
+// Ma'lumotlarni localStorage'da saqlash
+function saveDataToLocalStorage(data) {
+    try {
+        // Joriy ma'lumotlarni saqlash
+        localStorage.setItem('debt_current_data', JSON.stringify({
+            agents: data.agents,
+            previousData: data.previousData,
+            lastUpdated: data.lastUpdated,
+            savedAt: new Date().toISOString()
+        }));
+
+        // Tarixiy ma'lumotlarni saqlash
+        let history = JSON.parse(localStorage.getItem('debt_history') || '[]');
+
+        // Yangi versiyani tarixga qo'shish (maksimum 10 ta versiya)
+        history.unshift({
+            agents: data.agents,
+            savedAt: new Date().toISOString()
+        });
+
+        // Faqat oxirgi 10 ta versiyani saqlash
+        if (history.length > 10) {
+            history = history.slice(0, 10);
+        }
+
+        localStorage.setItem('debt_history', JSON.stringify(history));
+        allHistoricalData = history;
+
+        console.log('Ma\'lumotlar saqlandi. Tarix soni:', history.length);
+    } catch (err) {
+        console.error('localStorage saqlash xatosi:', err);
+    }
+}
+
+// localStorage'dan ma'lumotlarni yuklash
+function loadDataFromLocalStorage() {
+    try {
+        const cached = localStorage.getItem('debt_current_data');
+        if (cached) {
+            const data = JSON.parse(cached);
+            console.log('Cached data yuklandi, saqlangan vaqt:', data.savedAt);
+            return data;
+        }
+    } catch (err) {
+        console.error('localStorage yuklash xatosi:', err);
+    }
+    return null;
+}
+
+// Tarixiy ma'lumotlarni yuklash
+function loadHistoryFromLocalStorage() {
+    try {
+        const history = localStorage.getItem('debt_history');
+        if (history) {
+            allHistoricalData = JSON.parse(history);
+            console.log('Tarix yuklandi, versiyalar soni:', allHistoricalData.length);
+        }
+    } catch (err) {
+        console.error('Tarix yuklash xatosi:', err);
     }
 }
 
@@ -156,6 +265,53 @@ function updateStats() {
     animateValue('totalDebtors', totalDebtors);
     animateValue('totalUSD', totalUSD, '$');
     animateValue('totalUZS', totalUZS, 'UZS');
+
+    // Oldingi ma'lumotlar bilan solishtirish
+    updateDebtChange(totalUSD, totalUZS);
+}
+
+function updateDebtChange(currentUSD, currentUZS) {
+    const changeUSDEl = document.getElementById('changeUSD');
+    const changeUZSEl = document.getElementById('changeUZS');
+
+    if (!changeUSDEl || !changeUZSEl) return;
+
+    if (!previousData || previousData.length === 0) {
+        changeUSDEl.textContent = '';
+        changeUZSEl.textContent = '';
+        return;
+    }
+
+    // Oldingi jami hisoblash
+    const prevTotalUSD = previousData.reduce((sum, a) => sum + (a.totalUSD || 0), 0);
+    const prevTotalUZS = previousData.reduce((sum, a) => sum + (a.totalUZS || 0), 0);
+
+    const diffUSD = currentUSD - prevTotalUSD;
+    const diffUZS = currentUZS - prevTotalUZS;
+
+    // USD o'zgarish
+    if (Math.abs(diffUSD) > 0.01) {
+        if (diffUSD < 0) {
+            // Qarz kamaygan - yaxshi
+            changeUSDEl.innerHTML = `<span class="change-down">▼ -$${Math.abs(diffUSD).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
+        } else {
+            // Qarz oshgan
+            changeUSDEl.innerHTML = `<span class="change-up">▲ +$${diffUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
+        }
+    } else {
+        changeUSDEl.innerHTML = `<span class="change-neutral">— o'zgarmagan</span>`;
+    }
+
+    // UZS o'zgarish
+    if (Math.abs(diffUZS) > 1) {
+        if (diffUZS < 0) {
+            changeUZSEl.innerHTML = `<span class="change-down">▼ -${Math.abs(Math.round(diffUZS)).toLocaleString('uz-UZ')} so'm</span>`;
+        } else {
+            changeUZSEl.innerHTML = `<span class="change-up">▲ +${Math.round(diffUZS).toLocaleString('uz-UZ')} so'm</span>`;
+        }
+    } else {
+        changeUZSEl.innerHTML = `<span class="change-neutral">— o'zgarmagan</span>`;
+    }
 }
 
 function animateValue(id, value, prefix = '') {
