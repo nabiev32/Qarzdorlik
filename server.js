@@ -58,13 +58,17 @@ async function loadFromCloud() {
 async function saveToCloud(data) {
     if (!JSONBIN_API_URL || !JSONBIN_API_KEY) return false;
     try {
+        // previousData ni olib tashlash (hajmni kamaytirish, JSONBin 100KB limit)
+        const cloudData = { ...data };
+        delete cloudData.previousData;
+
         const res = await fetch(JSONBIN_API_URL, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
                 'X-Master-Key': JSONBIN_API_KEY
             },
-            body: JSON.stringify(data)
+            body: JSON.stringify(cloudData)
         });
         if (res.ok) {
             console.log('✅ JSONBin\'ga ma\'lumot saqlandi');
@@ -103,8 +107,12 @@ async function saveData(data) {
     } catch (e) {
         console.error('Lokal saqlash xatosi:', e);
     }
-    // Bulutga saqlash
-    await saveToCloud(data);
+    // Bulutga saqlash (xato bo'lsa ham davom etadi)
+    try {
+        await saveToCloud(data);
+    } catch (e) {
+        console.error('Bulutga saqlashda xatolik:', e.message);
+    }
 }
 
 // Initialize data
