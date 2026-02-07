@@ -42,8 +42,14 @@ async function loadFromCloud() {
         });
         if (res.ok) {
             const json = await res.json();
+            const record = json.record || {};
+            // Ma'lumotni validatsiya qilish
+            if (!record.agents) record.agents = [];
+            if (!record.lastUpdated) record.lastUpdated = null;
+            if (!record.previousData) record.previousData = null;
+            if (!record.appPassword) record.appPassword = '1';
             console.log('✅ JSONBin\'dan ma\'lumot muvaffaqiyatli yuklandi');
-            return json.record;
+            return record;
         } else {
             console.error('❌ JSONBin xatosi:', res.status, await res.text());
             return null;
@@ -132,7 +138,7 @@ const upload = multer({ storage });
 // Process Excel files
 async function processExcelFiles(files) {
     // Save previous data for comparison
-    if (dashboardData.agents.length > 0) {
+    if (dashboardData.agents && dashboardData.agents.length > 0) {
         dashboardData.previousData = [...dashboardData.agents];
     }
 
