@@ -4,6 +4,7 @@ const XLSX = require('xlsx');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const fetch = require('node-fetch');
 
 const app = express();
 
@@ -23,30 +24,91 @@ const DATA_FILE = path.join(__dirname, 'data.json');
 // Admin password (change this!)
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
-// Load existing data
-function loadData() {
+// ============ JSONBin.io CLOUD STORAGE ============
+const JSONBIN_BIN_ID = process.env.JSONBIN_BIN_ID || '';
+const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY || '';
+const JSONBIN_API_URL = JSONBIN_BIN_ID ? `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}` : '';
+
+// Load data from JSONBin.io (cloud)
+async function loadFromCloud() {
+    if (!JSONBIN_API_URL || !JSONBIN_API_KEY) {
+        console.log('⚠️  JSONBin sozlanmagan, lokal data.json ishlatiladi');
+        return null;
+    }
+    try {
+        console.log('☁️  JSONBin\'dan ma\'lumot yuklanmoqda...');
+        const res = await fetch(`${JSONBIN_API_URL}/latest`, {
+            headers: { 'X-Master-Key': JSONBIN_API_KEY }
+        });
+        if (res.ok) {
+            const json = await res.json();
+            console.log('✅ JSONBin\'dan ma\'lumot muvaffaqiyatli yuklandi');
+            return json.record;
+        } else {
+            console.error('❌ JSONBin xatosi:', res.status, await res.text());
+            return null;
+        }
+    } catch (e) {
+        console.error('❌ JSONBin ulanish xatosi:', e.message);
+        return null;
+    }
+}
+
+// Save data to JSONBin.io (cloud)
+async function saveToCloud(data) {
+    if (!JSONBIN_API_URL || !JSONBIN_API_KEY) return false;
+    try {
+        const res = await fetch(JSONBIN_API_URL, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Master-Key': JSONBIN_API_KEY
+            },
+            body: JSON.stringify(data)
+        });
+        if (res.ok) {
+            console.log('✅ JSONBin\'ga ma\'lumot saqlandi');
+            return true;
+        } else {
+            console.error('❌ JSONBin saqlash xatosi:', res.status, await res.text());
+            return false;
+        }
+    } catch (e) {
+        console.error('❌ JSONBin saqlash ulanish xatosi:', e.message);
+        return false;
+    }
+}
+
+// Load from local file (fallback)
+function loadFromFile() {
     try {
         if (fs.existsSync(DATA_FILE)) {
             const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-            // Ensure appPassword exists
             if (!data.appPassword) {
                 data.appPassword = '1';
             }
             return data;
         }
     } catch (e) {
-        console.error('Error loading data:', e);
+        console.error('Error loading local data:', e);
     }
     return { agents: [], lastUpdated: null, previousData: null, appPassword: '1' };
 }
 
-// Save data
-function saveData(data) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+// Save data (cloud + local)
+async function saveData(data) {
+    // Lokal faylga saqlash (zaxira)
+    try {
+        fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+    } catch (e) {
+        console.error('Lokal saqlash xatosi:', e);
+    }
+    // Bulutga saqlash
+    await saveToCloud(data);
 }
 
 // Initialize data
-let dashboardData = loadData();
+let dashboardData = loadFromFile();
 
 // File upload setup
 const storage = multer.diskStorage({
@@ -60,7 +122,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // Process Excel files
-function processExcelFiles(files) {
+async function processExcelFiles(files) {
     // Save previous data for comparison
     if (dashboardData.agents.length > 0) {
         dashboardData.previousData = [...dashboardData.agents];
@@ -143,8 +205,8 @@ function processExcelFiles(files) {
     dashboardData.agents = agents;
     dashboardData.lastUpdated = new Date().toISOString();
 
-    // Save to file
-    saveData(dashboardData);
+    // Save to file and cloud
+    await saveData(dashboardData);
 
     return agents;
 }
@@ -162,7 +224,7 @@ app.get('/api/app-password', (req, res) => {
 });
 
 // Update app password (admin only)
-app.post('/api/app-password', (req, res) => {
+app.post('/api/app-password', async (req, res) => {
     const adminPass = req.headers['x-admin-password'];
     if (adminPass !== ADMIN_PASSWORD) {
         return res.status(401).json({ error: 'Ruxsat yo\'q' });
@@ -174,12 +236,12 @@ app.post('/api/app-password', (req, res) => {
     }
 
     dashboardData.appPassword = newPassword;
-    saveData(dashboardData);
+    await saveData(dashboardData);
     res.json({ success: true, message: 'Parol o\'zgartirildi' });
 });
 
 // Set exchange rate (admin only)
-app.post('/api/exchange-rate', (req, res) => {
+app.post('/api/exchange-rate', async (req, res) => {
     const password = req.headers['x-admin-password'];
 
     if (password !== ADMIN_PASSWORD) {
@@ -192,7 +254,7 @@ app.post('/api/exchange-rate', (req, res) => {
     }
 
     dashboardData.exchangeRate = parseFloat(rate);
-    saveData(dashboardData);
+    await saveData(dashboardData);
     res.json({ success: true, message: 'Kurs o\'zgartirildi' });
 });
 
@@ -212,7 +274,7 @@ app.post('/api/auth', (req, res) => {
 });
 
 // Upload files (admin only)
-app.post('/api/upload', upload.array('files'), (req, res) => {
+app.post('/api/upload', upload.array('files'), async (req, res) => {
     const password = req.headers['x-admin-password'];
 
     if (password !== ADMIN_PASSWORD) {
@@ -223,7 +285,7 @@ app.post('/api/upload', upload.array('files'), (req, res) => {
         return res.status(400).json({ error: 'Fayllar yuklanmadi' });
     }
 
-    const agents = processExcelFiles(req.files);
+    const agents = await processExcelFiles(req.files);
 
     res.json({
         success: true,
@@ -247,9 +309,34 @@ app.get('/', (req, res) => {
     });
 });
 
-// Start server
+// Start server with cloud data sync
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Admin panel: http://localhost:${PORT}/admin`);
-});
+
+async function startServer() {
+    // Avval bulutdan ma'lumot yuklash
+    const cloudData = await loadFromCloud();
+    if (cloudData) {
+        dashboardData = cloudData;
+        // Lokal faylga ham saqlash (zaxira)
+        try {
+            fs.writeFileSync(DATA_FILE, JSON.stringify(dashboardData, null, 2));
+        } catch (e) {
+            console.error('Lokal zaxira saqlash xatosi:', e);
+        }
+        console.log(`📊 Bulutdan ${dashboardData.agents?.length || 0} ta agent yuklandi`);
+    } else {
+        console.log(`📊 Lokal fayldan ${dashboardData.agents?.length || 0} ta agent yuklandi`);
+    }
+
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+        console.log(`Admin panel: http://localhost:${PORT}/admin`);
+        if (JSONBIN_BIN_ID) {
+            console.log('☁️  JSONBin.io cloud storage: FAOL');
+        } else {
+            console.log('⚠️  JSONBin.io sozlanmagan - faqat lokal saqlash');
+        }
+    });
+}
+
+startServer();
