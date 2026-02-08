@@ -64,8 +64,8 @@ async function loadFromCloud() {
 async function saveToCloud(data) {
     if (!JSONBIN_API_URL || !JSONBIN_API_KEY) return false;
     try {
-        // previousData ni ixcham saqlash (faqat agent nomlari va jami summalar)
-        // Bu qarz o'zgarishini ko'rsatish uchun kerak, lekin hajmni kamaytiradi
+        // previousData ni to'liq saqlash (debtors bilan)
+        // Bu to'lov qilgan klientlarni aniqlash uchun kerak
         const cloudData = { ...data };
         if (cloudData.previousData && Array.isArray(cloudData.previousData)) {
             cloudData.previousData = cloudData.previousData.map(a => ({
@@ -363,3 +363,4 @@ async function startServer() {
 }
 
 startServer();
+
