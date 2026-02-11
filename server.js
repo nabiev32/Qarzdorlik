@@ -47,6 +47,7 @@ async function loadFromCloud() {
             if (!record.agents) record.agents = [];
             if (!record.lastUpdated) record.lastUpdated = null;
             if (!record.previousData) record.previousData = null;
+            if (!record.dataHistory) record.dataHistory = [];
             if (!record.appPassword) record.appPassword = '1';
             console.log('✅ JSONBin\'dan ma\'lumot muvaffaqiyatli yuklandi');
             return record;
@@ -102,7 +103,7 @@ function loadFromFile() {
     } catch (e) {
         console.error('Error loading local data:', e);
     }
-    return { agents: [], lastUpdated: null, previousData: null, appPassword: '1' };
+    return { agents: [], lastUpdated: null, previousData: null, dataHistory: [], appPassword: '1' };
 }
 
 // Save data (cloud + local)
@@ -238,6 +239,38 @@ async function processExcelFiles(files) {
         }
     }
 
+    // Kunlik tarix snapshot saqlash
+    if (!dashboardData.dataHistory) dashboardData.dataHistory = [];
+    const today = new Date().toISOString().split('T')[0]; // "2026-02-11"
+
+    // Bugungi snapshot mavjudmi tekshirish
+    const existingIndex = dashboardData.dataHistory.findIndex(h => h.date === today);
+    const snapshot = {
+        date: today,
+        lastUpdated: dashboardData.lastUpdated,
+        summary: agents.map(a => ({
+            name: a.name,
+            totalUSD: a.totalUSD,
+            totalUZS: a.totalUZS,
+            debtorCount: a.debtorCount
+        }))
+    };
+
+    if (existingIndex >= 0) {
+        // Bugungi snapshotni yangilash
+        dashboardData.dataHistory[existingIndex] = snapshot;
+    } else {
+        // Yangi kun qo'shish
+        dashboardData.dataHistory.unshift(snapshot);
+    }
+
+    // Faqat oxirgi 30 kunni saqlash
+    if (dashboardData.dataHistory.length > 30) {
+        dashboardData.dataHistory = dashboardData.dataHistory.slice(0, 30);
+    }
+
+    console.log('📅 Tarix saqlandi. Kunlar soni:', dashboardData.dataHistory.length);
+
     // Save to file and cloud
     await saveData(dashboardData);
 
@@ -249,6 +282,25 @@ async function processExcelFiles(files) {
 // Get dashboard data (for Mini App)
 app.get('/api/data', (req, res) => {
     res.json(dashboardData);
+});
+
+// Tarixiy sanalar ro'yxati
+app.get('/api/history', (req, res) => {
+    const dates = (dashboardData.dataHistory || []).map(h => ({
+        date: h.date,
+        lastUpdated: h.lastUpdated
+    }));
+    res.json({ dates });
+});
+
+// Tanlangan sanadagi ma'lumotlar
+app.get('/api/history/:date', (req, res) => {
+    const { date } = req.params;
+    const snapshot = (dashboardData.dataHistory || []).find(h => h.date === date);
+    if (!snapshot) {
+        return res.status(404).json({ error: 'Bu sana uchun ma\'lumot topilmadi' });
+    }
+    res.json(snapshot);
 });
 
 // Get app password (for Mini App login)
