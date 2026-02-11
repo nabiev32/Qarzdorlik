@@ -293,6 +293,72 @@ body {
     margin-top: 4px;
 }
 
+/* History Date Picker */
+.history-picker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.history-picker:hover {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.1);
+}
+
+.history-picker svg {
+    color: var(--accent-blue);
+    flex-shrink: 0;
+}
+
+.history-picker select {
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-family: inherit;
+    padding-right: 4px;
+}
+
+.history-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: rgba(255, 159, 10, 0.1);
+    border: 1px solid rgba(255, 159, 10, 0.3);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent-orange);
+}
+
+.back-today-btn {
+    border: none;
+    background: var(--accent-blue);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.back-today-btn:hover {
+    background: #005bb5;
+    transform: translateY(-1px);
+}
+
 .date-display {
     display: flex;
     align-items: center;
