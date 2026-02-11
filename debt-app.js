@@ -77,7 +77,27 @@ function showApp() {
     initSearch();
     updateDate();
     fetchExchangeRate();
-    loadData();
+
+    // Cache-first: avval localStorage'dan darhol ko'rsatish
+    const cachedData = loadDataFromLocalStorage();
+    if (cachedData && cachedData.agents && cachedData.agents.length > 0) {
+        agentsData = cachedData.agents;
+        previousData = cachedData.previousData;
+        updateLastUpdatedDate(cachedData.lastUpdated || cachedData.savedAt);
+        showDashboard();
+        updateStats();
+        renderCharts();
+        renderTable();
+        console.log('✅ Cache\'dan darhol ko\'rsatildi, serverdan yangilanmoqda...');
+        console.log('📊 previousData mavjudmi:', previousData ? 'Ha (' + previousData.length + ' ta agent)' : 'Yo\'q');
+        // Orqa fonda serverdan yangilash
+        loadDataSilent();
+        // Tarix sanalarini yuklash
+        loadHistoryDates();
+    } else {
+        // Cache yo'q - serverdan yuklash (loading spinner bilan)
+        loadData();
+    }
 }
 
 function updateDate() {
@@ -117,7 +137,7 @@ async function fetchExchangeRate() {
     }
 }
 
-// Fetch data from server
+// Fetch data from server (with loading spinner)
 async function loadData() {
     showLoading();
 
@@ -132,11 +152,14 @@ async function loadData() {
             // Ma'lumotlarni localStorage'da saqlash
             saveDataToLocalStorage(data);
 
+            console.log('📊 Serverdan yuklandi. previousData:', previousData ? 'Ha (' + previousData.length + ' ta agent)' : 'Yo\'q');
+
             updateLastUpdatedDate(data.lastUpdated);
             showDashboard();
             updateStats();
             renderCharts();
             renderTable();
+            loadHistoryDates();
         } else {
             // Server ma'lumot bermasa, localStorage'dan yuklab ko'ramiz
             const cachedData = loadDataFromLocalStorage();
@@ -172,6 +195,31 @@ async function loadData() {
             }
             showEmpty();
         }
+    }
+}
+
+// Orqa fonda serverdan yangilash (loading spinner ko'rsatmasdan)
+async function loadDataSilent() {
+    try {
+        const res = await fetch(`${API_URL}/api/data`);
+        const data = await res.json();
+
+        if (data.agents && data.agents.length > 0) {
+            agentsData = data.agents;
+            previousData = data.previousData;
+
+            // Ma'lumotlarni localStorage'da saqlash
+            saveDataToLocalStorage(data);
+
+            console.log('🔄 Serverdan yangilandi. previousData:', previousData ? 'Ha (' + previousData.length + ' ta agent)' : 'Yo\'q');
+
+            updateLastUpdatedDate(data.lastUpdated);
+            updateStats();
+            renderCharts();
+            renderTable();
+        }
+    } catch (err) {
+        console.log('⚠️ Orqa fonda yangilash xatosi (cache ishlatilmoqda):', err.message);
     }
 }
 
@@ -707,4 +755,132 @@ function showPayments(currency) {
 function closePaymentsModal() {
     document.getElementById('paymentsModal').classList.add('hidden');
     document.body.style.overflow = '';
+}
+
+// ============ TARIX (HISTORY) FUNKSIYALARI ============
+
+let isHistoryMode = false;
+let savedCurrentData = null; // Joriy ma'lumotni saqlash (tarixdan qaytish uchun)
+
+// Serverdan mavjud sanalarni yuklash
+async function loadHistoryDates() {
+    try {
+        const res = await fetch(`${API_URL}/api/history`);
+        const data = await res.json();
+
+        const select = document.getElementById('historyDateSelect');
+        if (!select || !data.dates || data.dates.length === 0) return;
+
+        // Selectni tozalash va "Bugungi" ni qo'shish
+        select.innerHTML = '<option value="today">📊 Bugungi holat</option>';
+
+        // Sanalarni qo'shish
+        data.dates.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.date;
+            // Sanani chiroyli formatda ko'rsatish
+            const d = new Date(item.date + 'T00:00:00');
+            const day = String(d.getDate()).padStart(2, '0');
+            const months = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'];
+            const monthName = months[d.getMonth()];
+            option.textContent = `📅 ${day}-${monthName} ${d.getFullYear()}`;
+            select.appendChild(option);
+        });
+
+        console.log('📅 Tarix sanalari yuklandi:', data.dates.length, 'ta kun');
+    } catch (err) {
+        console.log('⚠️ Tarix sanalarini yuklash xatosi:', err.message);
+    }
+}
+
+// Sana tanlanganda
+async function onHistoryDateChange(value) {
+    if (value === 'today') {
+        backToToday();
+        return;
+    }
+
+    try {
+        // Joriy ma'lumotlarni saqlash (keyinroq qaytish uchun)
+        if (!isHistoryMode) {
+            savedCurrentData = {
+                agents: agentsData,
+                previousData: previousData
+            };
+        }
+
+        const res = await fetch(`${API_URL}/api/history/${value}`);
+        if (!res.ok) {
+            alert('Bu sana uchun ma\'lumot topilmadi');
+            return;
+        }
+        const snapshot = await res.json();
+
+        // Tarixiy ma'lumotlarni agentsData formatiga o'tkazish
+        agentsData = snapshot.summary.map(s => ({
+            name: s.name,
+            totalUSD: s.totalUSD,
+            totalUZS: s.totalUZS,
+            debtorCount: s.debtorCount,
+            debtors: [] // Tarixda batafsil debtor ro'yxati yo'q
+        }));
+
+        isHistoryMode = true;
+
+        // UI ni yangilash
+        updateStats();
+        renderCharts();
+        renderTable();
+        updateLastUpdatedDate(snapshot.lastUpdated);
+
+        // Tarixiy rejim ko'rsatkichini ko'rsatish
+        document.getElementById('historyBadge').classList.remove('hidden');
+
+        // To'lov tugmalarini yashirish (tarixda debtor tafsilotlari yo'q)
+        const paymentBtns = document.querySelector('.payment-buttons');
+        if (paymentBtns) paymentBtns.classList.add('hidden');
+
+        // Change indikatorlarini tozalash
+        const changeUSD = document.getElementById('changeUSD');
+        const changeUZS = document.getElementById('changeUZS');
+        if (changeUSD) changeUSD.textContent = '';
+        if (changeUZS) changeUZS.textContent = '';
+
+        console.log('📅 Tarixiy ma\'lumot yuklandi:', value);
+    } catch (err) {
+        console.error('Tarixiy ma\'lumot yuklash xatosi:', err);
+        alert('Xatolik yuz berdi: ' + err.message);
+    }
+}
+
+// Bugungi holatga qaytish
+function backToToday() {
+    if (savedCurrentData) {
+        agentsData = savedCurrentData.agents;
+        previousData = savedCurrentData.previousData;
+        savedCurrentData = null;
+    }
+
+    isHistoryMode = false;
+
+    // Select ni "Bugungi" ga qaytarish
+    const select = document.getElementById('historyDateSelect');
+    if (select) select.value = 'today';
+
+    // Tarixiy rejim badge ni yashirish
+    document.getElementById('historyBadge').classList.add('hidden');
+
+    // To'lov tugmalarini qaytarish
+    const paymentBtns = document.querySelector('.payment-buttons');
+    if (paymentBtns) paymentBtns.classList.remove('hidden');
+
+    // UI ni qayta chizish
+    updateStats();
+    renderCharts();
+    renderTable();
+
+    // Serverdan yangi ma'lumotlarni yuklash
+    loadDataSilent();
+
+    console.log('📊 Bugungi holatga qaytildi');
 }
