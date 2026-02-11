@@ -67,15 +67,6 @@ async function saveToCloud(data) {
         // previousData ni to'liq saqlash (debtors bilan)
         // Bu to'lov qilgan klientlarni aniqlash uchun kerak
         const cloudData = { ...data };
-        if (cloudData.previousData && Array.isArray(cloudData.previousData)) {
-            cloudData.previousData = cloudData.previousData.map(a => ({
-                name: a.name,
-                totalUSD: a.totalUSD || 0,
-                totalUZS: a.totalUZS || 0,
-                debtorCount: a.debtorCount || 0,
-                debtors: [] // debtors ro'yxatini olib tashlash (hajmni kamaytirish)
-            }));
-        }
 
         const res = await fetch(JSONBIN_API_URL, {
             method: 'PUT',
@@ -146,10 +137,10 @@ const upload = multer({ storage });
 
 // Process Excel files
 async function processExcelFiles(files) {
-    // Save previous data for comparison
-    if (dashboardData.agents && dashboardData.agents.length > 0) {
-        dashboardData.previousData = [...dashboardData.agents];
-    }
+    // Joriy agents ma'lumotlarini saqlab qo'yamiz (keyinroq solishtirish uchun)
+    const currentAgentsCopy = dashboardData.agents && dashboardData.agents.length > 0
+        ? JSON.parse(JSON.stringify(dashboardData.agents))
+        : null;
 
     const agents = [];
 
@@ -227,6 +218,25 @@ async function processExcelFiles(files) {
 
     dashboardData.agents = agents;
     dashboardData.lastUpdated = new Date().toISOString();
+
+    // previousData ni aqlli yangilash:
+    // Agar yangi ma'lumotlar eski ma'lumotlardan farq qilsa - previousData ni yangilash
+    // Agar bir xil bo'lsa - eski previousData ni saqlab qolish
+    if (currentAgentsCopy) {
+        const oldTotalUSD = currentAgentsCopy.reduce((sum, a) => sum + (a.totalUSD || 0), 0);
+        const oldTotalUZS = currentAgentsCopy.reduce((sum, a) => sum + (a.totalUZS || 0), 0);
+        const newTotalUSD = agents.reduce((sum, a) => sum + (a.totalUSD || 0), 0);
+        const newTotalUZS = agents.reduce((sum, a) => sum + (a.totalUZS || 0), 0);
+
+        // Agar summalar farq qilsa, yangi previousData saqlash
+        if (Math.abs(oldTotalUSD - newTotalUSD) > 0.01 || Math.abs(oldTotalUZS - newTotalUZS) > 1) {
+            dashboardData.previousData = currentAgentsCopy;
+            console.log('📊 previousData yangilandi. Eski USD:', oldTotalUSD.toFixed(2), '-> Yangi USD:', newTotalUSD.toFixed(2));
+        } else {
+            // Bir xil ma'lumotlar qayta yuklangan, eski previousData saqlanadi
+            console.log('📊 Ma\'lumotlar o\'zgarmagan, previousData saqlanib qoldi');
+        }
+    }
 
     // Save to file and cloud
     await saveData(dashboardData);
@@ -363,4 +373,3 @@ async function startServer() {
 }
 
 startServer();
-
