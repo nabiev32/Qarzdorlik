@@ -23,6 +23,22 @@
                     <p class="page-subtitle">Agent va qarzdorlar analitikasi (USD + UZS)</p>
                 </div>
                 <div class="header-right">
+                    <div class="history-picker">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2" />
+                            <line x1="16" y1="2" x2="16" y2="6" />
+                            <line x1="8" y1="2" x2="8" y2="6" />
+                            <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                        <select id="historyDateSelect" onchange="onHistoryDateChange(this.value)">
+                            <option value="today">📊 Bugungi</option>
+                        </select>
+                    </div>
+                    <div id="historyBadge" class="history-badge hidden">
+                        📅 Tarixiy ko'rinish
+                        <button onclick="backToToday()" class="back-today-btn">⬅ Bugunga qaytish</button>
+                    </div>
                     <div class="date-display">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
@@ -317,7 +333,7 @@
         </div>
     </div>
 
-    <script src="debt-app.js?v=20260207"></script>
+    <script src="debt-app.js?v=20260211"></script>
 </body>
 
 </html>
