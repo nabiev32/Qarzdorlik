@@ -1031,7 +1031,7 @@ tr:hover td {
     background: white;
     border-radius: 16px;
     width: 90%;
-    max-width: 800px;
+    max-width: 900px;
     max-height: 80vh;
     overflow: hidden;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
@@ -1148,6 +1148,42 @@ tr:hover td {
 
 .modal-table tbody tr:hover {
     background: var(--bg-secondary);
+}
+
+/* Comment Column Styles */
+.comment-cell {
+    min-width: 120px;
+    max-width: 200px;
+    padding: 4px 6px !important;
+}
+
+.comment-input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: var(--bg-tertiary);
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--text-primary);
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.comment-input::placeholder {
+    color: var(--text-tertiary);
+    font-style: italic;
+}
+
+.comment-input:hover {
+    border-color: var(--border-color);
+}
+
+.comment-input.editing,
+.comment-input:focus {
+    border-color: var(--accent-blue);
+    background: white;
+    box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.15);
 }
 
 .clickable-row {
