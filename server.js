@@ -344,7 +344,10 @@ app.post('/api/comments', async (req, res) => {
 
     const key = `${agent}::${client}`;
     if (comment && comment.trim()) {
-        dashboardData.comments[key] = comment.trim();
+        dashboardData.comments[key] = {
+            text: comment.trim(),
+            date: new Date().toISOString()
+        };
     } else {
         delete dashboardData.comments[key];
     }
