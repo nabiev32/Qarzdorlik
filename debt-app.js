@@ -615,9 +615,14 @@ async function loadComments() {
 async function saveComment(agent, client, comment) {
     const key = `${agent}::${client}`;
     if (comment && comment.trim()) {
-        clientComments[key] = comment.trim();
+        clientComments[key] = { text: comment.trim(), date: new Date().toISOString() };
     } else {
         delete clientComments[key];
+    }
+    // Sanani darhol yangilash
+    const dateCell = document.querySelector(`[data-date-key="${CSS.escape(key)}"]`);
+    if (dateCell) {
+        dateCell.textContent = comment && comment.trim() ? formatCommentDate(new Date().toISOString()) : '';
     }
     try {
         await fetch(`${API_URL}/api/comments`, {
@@ -628,6 +633,31 @@ async function saveComment(agent, client, comment) {
     } catch (e) {
         console.error('Izoh saqlashda xatolik:', e);
     }
+}
+
+// Izoh sanasini formatlash
+function formatCommentDate(isoDate) {
+    if (!isoDate) return '';
+    const d = new Date(isoDate);
+    const day = String(d.getDate()).padStart(2, '0');
+    const mon = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hr = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${day}.${mon}.${year} ${hr}:${min}`;
+}
+
+// Izoh ob'yektidan matnni olish (eski string yoki yangi {text,date})
+function getCommentText(commentData) {
+    if (!commentData) return '';
+    if (typeof commentData === 'string') return commentData;
+    return commentData.text || '';
+}
+
+function getCommentDate(commentData) {
+    if (!commentData) return '';
+    if (typeof commentData === 'string') return '';
+    return commentData.date || '';
 }
 
 // Fuzzy name matching - topilmasa, boshini solishtirish
@@ -695,7 +725,9 @@ function showAgentDetails(agentName) {
 
         // Izohni olish
         const commentKey = `${agentName}::${debtor.name}`;
-        const existingComment = clientComments[commentKey] || '';
+        const commentData = clientComments[commentKey];
+        const existingComment = getCommentText(commentData);
+        const commentDate = getCommentDate(commentData);
 
         return `
         <tr>
@@ -710,6 +742,7 @@ function showAgentDetails(agentName) {
                     onfocus="this.classList.add('editing')"
                     onblur="this.classList.remove('editing'); saveComment(this.dataset.agent, this.dataset.client, this.value)" />
             </td>
+            <td class="comment-date" data-date-key="${commentKey.replace(/"/g, '&quot;')}">${formatCommentDate(commentDate)}</td>
             <td class="usd-amount">${debtor.usd > 0 ? '$' + debtor.usd.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-'}</td>
             <td class="uzs-amount">${debtor.uzs > 0 ? debtor.uzs.toLocaleString('uz-UZ') : '-'}</td>
         </tr>
@@ -765,9 +798,41 @@ function showPayments(currency) {
                     agent: agent.name,
                     client: debtor.name,
                     payment: payment,
-                    currency: currency
+                    currency: currency,
+                    fullyPaid: false
                 });
                 totalPayment += payment;
+            }
+        }
+    }
+
+    // ====== To'liq to'lagan klientlar ======
+    // previousData'dagi klientlar yangi faylda umuman yo'q bo'lsa — to'liq to'lagan
+    for (const prevAgent of previousData) {
+        const currentAgent = agentsData.find(a => normalizeName(a.name) === normalizeName(prevAgent.name));
+
+        if (!prevAgent.debtors) continue;
+
+        for (const prevDebtor of prevAgent.debtors) {
+            const prevAmount = currency === 'usd' ? prevDebtor.usd : prevDebtor.uzs;
+            if (prevAmount <= 0) continue; // Bu valyutada qarzi yo'q edi
+
+            // Yangi faylda bu klient bormi tekshirish
+            let foundInCurrent = false;
+            if (currentAgent && currentAgent.debtors) {
+                foundInCurrent = !!findPrevDebtor(currentAgent.debtors, prevDebtor.name);
+            }
+
+            if (!foundInCurrent) {
+                // To'liq to'lagan — yangi faylda umuman yo'q
+                payments.push({
+                    agent: prevAgent.name,
+                    client: prevDebtor.name,
+                    payment: prevAmount,
+                    currency: currency,
+                    fullyPaid: true
+                });
+                totalPayment += prevAmount;
             }
         }
     }
@@ -805,10 +870,10 @@ function showPayments(currency) {
         tableWrapper.classList.remove('hidden');
 
         tbody.innerHTML = payments.map((p, i) => `
-            <tr>
+            <tr class="${p.fullyPaid ? 'fully-paid-row' : ''}">
                 <td>${i + 1}</td>
                 <td>${p.agent}</td>
-                <td>${p.client}</td>
+                <td>${p.client}${p.fullyPaid ? ' <span class="fully-paid-badge">✅ To\'landi</span>' : ''}</td>
                 <td class="${currency === 'usd' ? 'usd-amount' : 'uzs-amount'}">
                     ${currency === 'usd'
                 ? '$' + p.payment.toLocaleString('en-US', { minimumFractionDigits: 2 })
