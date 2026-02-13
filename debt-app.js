@@ -9,6 +9,7 @@ const APP_PASSWORD = '1';
 
 let agentsData = [];
 let previousData = null;
+let clientComments = {};
 let allHistoricalData = []; // Barcha yuklangan excel ma'lumotlari
 
 // Initialize
@@ -72,11 +73,14 @@ function showLogin() {
 }
 
 // Show app after login
-function showApp() {
+async function showApp() {
     document.getElementById('loginScreen').classList.add('hidden');
     initSearch();
     updateDate();
     fetchExchangeRate();
+
+    // Izohlarni yuklash
+    await loadComments();
 
     // Cache-first: avval localStorage'dan darhol ko'rsatish
     const cachedData = loadDataFromLocalStorage();
@@ -140,6 +144,9 @@ async function fetchExchangeRate() {
 // Fetch data from server (with loading spinner)
 async function loadData() {
     showLoading();
+
+    // Izohlarni yuklash
+    await loadComments();
 
     try {
         const res = await fetch(`${API_URL}/api/data`);
@@ -586,8 +593,59 @@ function initSearch() {
 // Modal Functions
 // Normalize name for comparison
 function normalizeName(name) {
-    if (!name) return '';
-    return String(name).toLowerCase().replace(/\s+/g, ' ').trim();
+    return name.toLowerCase().replace(/[^a-z0-9а-яёўқғҳ]/gi, '');
+}
+
+// ============ IZOHLAR (COMMENTS) ============
+
+// Serverdan izohlarni yuklash
+async function loadComments() {
+    try {
+        const res = await fetch(`${API_URL}/api/comments`);
+        if (res.ok) {
+            const data = await res.json();
+            clientComments = data.comments || {};
+        }
+    } catch (e) {
+        console.error('Izohlarni yuklashda xatolik:', e);
+    }
+}
+
+// Izohni serverga saqlash
+async function saveComment(agent, client, comment) {
+    const key = `${agent}::${client}`;
+    if (comment && comment.trim()) {
+        clientComments[key] = comment.trim();
+    } else {
+        delete clientComments[key];
+    }
+    try {
+        await fetch(`${API_URL}/api/comments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agent, client, comment })
+        });
+    } catch (e) {
+        console.error('Izoh saqlashda xatolik:', e);
+    }
+}
+
+// Fuzzy name matching - topilmasa, boshini solishtirish
+function findPrevDebtor(prevDebtors, currentName) {
+    if (!prevDebtors || prevDebtors.length === 0) return null;
+    const normalized = normalizeName(currentName);
+    // 1. To'liq moslik
+    let found = prevDebtors.find(d => normalizeName(d.name) === normalized);
+    if (found) return found;
+    // 2. Boshi bilan moslik (kamida 5 ta belgi)
+    if (normalized.length >= 5) {
+        found = prevDebtors.find(d => {
+            const prev = normalizeName(d.name);
+            return prev.startsWith(normalized.substring(0, 5)) || normalized.startsWith(prev.substring(0, 5));
+        });
+        if (found) return found;
+    }
+    return null;
 }
 
 function showAgentDetails(agentName) {
@@ -611,10 +669,9 @@ function showAgentDetails(agentName) {
     tbody.innerHTML = sortedDebtors.map((debtor, i) => {
         // Calculate change from previous data
         let changeHtml = '';
-        if (prevAgent) {
-            // Find matching debtor by normalized name
-            const normalizedDebtorName = normalizeName(debtor.name);
-            const prevDebtor = prevAgent.debtors.find(d => normalizeName(d.name) === normalizedDebtorName);
+        if (prevAgent && prevAgent.debtors && prevAgent.debtors.length > 0) {
+            // Find matching debtor - fuzzy matching
+            const prevDebtor = findPrevDebtor(prevAgent.debtors, debtor.name);
 
             if (prevDebtor) {
                 const usdChange = debtor.usd - prevDebtor.usd;
@@ -636,10 +693,23 @@ function showAgentDetails(agentName) {
             }
         }
 
+        // Izohni olish
+        const commentKey = `${agentName}::${debtor.name}`;
+        const existingComment = clientComments[commentKey] || '';
+
         return `
         <tr>
             <td>${i + 1}</td>
             <td>${debtor.name} ${changeHtml}</td>
+            <td class="comment-cell">
+                <input type="text" class="comment-input" 
+                    value="${existingComment.replace(/"/g, '&quot;')}" 
+                    placeholder="Izoh..."
+                    data-agent="${agentName.replace(/"/g, '&quot;')}" 
+                    data-client="${debtor.name.replace(/"/g, '&quot;')}"
+                    onfocus="this.classList.add('editing')"
+                    onblur="this.classList.remove('editing'); saveComment(this.dataset.agent, this.dataset.client, this.value)" />
+            </td>
             <td class="usd-amount">${debtor.usd > 0 ? '$' + debtor.usd.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-'}</td>
             <td class="uzs-amount">${debtor.uzs > 0 ? debtor.uzs.toLocaleString('uz-UZ') : '-'}</td>
         </tr>
@@ -679,7 +749,7 @@ function showPayments(currency) {
         if (!prevAgent) continue;
 
         for (const debtor of agent.debtors) {
-            const prevDebtor = prevAgent.debtors.find(d => normalizeName(d.name) === normalizeName(debtor.name));
+            const prevDebtor = findPrevDebtor(prevAgent.debtors, debtor.name);
             if (!prevDebtor) continue;
 
             let payment = 0;
