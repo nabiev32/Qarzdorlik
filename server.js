@@ -49,6 +49,7 @@ async function loadFromCloud() {
             if (!record.previousData) record.previousData = null;
             if (!record.dataHistory) record.dataHistory = [];
             if (!record.appPassword) record.appPassword = '1';
+            if (!record.comments) record.comments = {};
             console.log('✅ JSONBin\'dan ma\'lumot muvaffaqiyatli yuklandi');
             return record;
         } else {
@@ -103,7 +104,7 @@ function loadFromFile() {
     } catch (e) {
         console.error('Error loading local data:', e);
     }
-    return { agents: [], lastUpdated: null, previousData: null, dataHistory: [], appPassword: '1' };
+    return { agents: [], lastUpdated: null, previousData: null, dataHistory: [], appPassword: '1', comments: {} };
 }
 
 // Save data (cloud + local)
@@ -323,6 +324,33 @@ app.post('/api/app-password', async (req, res) => {
     dashboardData.appPassword = newPassword;
     await saveData(dashboardData);
     res.json({ success: true, message: 'Parol o\'zgartirildi' });
+});
+
+// ============ IZOHLAR (COMMENTS) ============
+
+// Barcha izohlarni olish
+app.get('/api/comments', (req, res) => {
+    res.json({ comments: dashboardData.comments || {} });
+});
+
+// Izoh saqlash/yangilash
+app.post('/api/comments', async (req, res) => {
+    const { agent, client, comment } = req.body;
+    if (!agent || !client) {
+        return res.status(400).json({ error: 'Agent va klient nomi kerak' });
+    }
+
+    if (!dashboardData.comments) dashboardData.comments = {};
+
+    const key = `${agent}::${client}`;
+    if (comment && comment.trim()) {
+        dashboardData.comments[key] = comment.trim();
+    } else {
+        delete dashboardData.comments[key];
+    }
+
+    await saveData(dashboardData);
+    res.json({ success: true });
 });
 
 // Set exchange rate (admin only)
