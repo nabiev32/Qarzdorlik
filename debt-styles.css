@@ -795,6 +795,15 @@ tr:hover td {
     background: rgba(52, 199, 89, 0.08) !important;
 }
 
+.untracked-row {
+    background: rgba(255, 159, 10, 0.06);
+    font-style: italic;
+}
+
+.untracked-row:hover td {
+    background: rgba(255, 159, 10, 0.1) !important;
+}
+
 /* Mobile - change indicators on new line */
 @media (max-width: 500px) {
     .change {
