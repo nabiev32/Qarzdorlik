@@ -325,6 +325,54 @@ function updateStats() {
     updateDebtChange(totalUSD, totalUZS);
 }
 
+// Klient bo'yicha to'lovlarni hisoblash (showPayments bilan bir xil logika)
+function calculatePayments(currency) {
+    if (!previousData || previousData.length === 0) return 0;
+
+    let totalPayment = 0;
+
+    // Qarz kamaygan klientlar
+    for (const agent of agentsData) {
+        const prevAgent = previousData.find(a => normalizeName(a.name) === normalizeName(agent.name));
+        if (!prevAgent) continue;
+
+        for (const debtor of agent.debtors) {
+            const prevDebtor = findPrevDebtor(prevAgent.debtors, debtor.name);
+            if (!prevDebtor) continue;
+
+            const payment = currency === 'usd'
+                ? prevDebtor.usd - debtor.usd
+                : prevDebtor.uzs - debtor.uzs;
+
+            if (payment > 0.01) {
+                totalPayment += payment;
+            }
+        }
+    }
+
+    // To'liq to'lagan klientlar (yangi faylda yo'q)
+    for (const prevAgent of previousData) {
+        const currentAgent = agentsData.find(a => normalizeName(a.name) === normalizeName(prevAgent.name));
+        if (!prevAgent.debtors) continue;
+
+        for (const prevDebtor of prevAgent.debtors) {
+            const prevAmount = currency === 'usd' ? prevDebtor.usd : prevDebtor.uzs;
+            if (prevAmount <= 0) continue;
+
+            let foundInCurrent = false;
+            if (currentAgent && currentAgent.debtors) {
+                foundInCurrent = !!findPrevDebtor(currentAgent.debtors, prevDebtor.name);
+            }
+
+            if (!foundInCurrent) {
+                totalPayment += prevAmount;
+            }
+        }
+    }
+
+    return totalPayment;
+}
+
 function updateDebtChange(currentUSD, currentUZS) {
     const changeUSDEl = document.getElementById('changeUSD');
     const changeUZSEl = document.getElementById('changeUZS');
@@ -337,20 +385,15 @@ function updateDebtChange(currentUSD, currentUZS) {
         return;
     }
 
-    // Oldingi jami hisoblash
-    const prevTotalUSD = previousData.reduce((sum, a) => sum + (a.totalUSD || 0), 0);
-    const prevTotalUZS = previousData.reduce((sum, a) => sum + (a.totalUZS || 0), 0);
-
-    const diffUSD = currentUSD - prevTotalUSD;
-    const diffUZS = currentUZS - prevTotalUZS;
+    // Klient bo'yicha hisoblash (showPayments bilan bir xil)
+    const diffUSD = -calculatePayments('usd');
+    const diffUZS = -calculatePayments('uzs');
 
     // USD o'zgarish
     if (Math.abs(diffUSD) > 0.01) {
         if (diffUSD < 0) {
-            // Qarz kamaygan - yaxshi
             changeUSDEl.innerHTML = `<span class="change-down">▼ -$${Math.abs(diffUSD).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
         } else {
-            // Qarz oshgan
             changeUSDEl.innerHTML = `<span class="change-up">▲ +$${diffUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
         }
     } else {
@@ -774,12 +817,7 @@ function showPayments(currency) {
     }
 
     const payments = [];
-    let trackedPayment = 0; // Individual klientlar bo'yicha hisoblangan to'lov
-
-    // ====== Haqiqiy jami farq (updateDebtChange bilan bir xil) ======
-    const prevTotal = previousData.reduce((sum, a) => sum + (currency === 'usd' ? (a.totalUSD || 0) : (a.totalUZS || 0)), 0);
-    const currentTotal = agentsData.reduce((sum, a) => sum + (currency === 'usd' ? (a.totalUSD || 0) : (a.totalUZS || 0)), 0);
-    const realTotalPayment = prevTotal - currentTotal; // Haqiqiy jami kamayish
+    let totalPayment = 0;
 
     // Compare current data with previous data
     for (const agent of agentsData) {
@@ -806,7 +844,7 @@ function showPayments(currency) {
                     currency: currency,
                     fullyPaid: false
                 });
-                trackedPayment += payment;
+                totalPayment += payment;
             }
         }
     }
@@ -820,16 +858,14 @@ function showPayments(currency) {
 
         for (const prevDebtor of prevAgent.debtors) {
             const prevAmount = currency === 'usd' ? prevDebtor.usd : prevDebtor.uzs;
-            if (prevAmount <= 0) continue; // Bu valyutada qarzi yo'q edi
+            if (prevAmount <= 0) continue;
 
-            // Yangi faylda bu klient bormi tekshirish
             let foundInCurrent = false;
             if (currentAgent && currentAgent.debtors) {
                 foundInCurrent = !!findPrevDebtor(currentAgent.debtors, prevDebtor.name);
             }
 
             if (!foundInCurrent) {
-                // To'liq to'lagan — yangi faylda umuman yo'q
                 payments.push({
                     agent: prevAgent.name,
                     client: prevDebtor.name,
@@ -837,28 +873,10 @@ function showPayments(currency) {
                     currency: currency,
                     fullyPaid: true
                 });
-                trackedPayment += prevAmount;
+                totalPayment += prevAmount;
             }
         }
     }
-
-    // ====== Topilmagan farq — nom mos kelmagan to'lovlar ======
-    // Agar haqiqiy jami to'lov > individual to'lovlar yig'indisi bo'lsa,
-    // demak ba'zi klient nomlari mos kelmagan
-    const untrackedPayment = realTotalPayment - trackedPayment;
-    if (untrackedPayment > 0.01) {
-        payments.push({
-            agent: '—',
-            client: 'Boshqa to\'lovlar (nom farqi)',
-            payment: untrackedPayment,
-            currency: currency,
-            fullyPaid: false,
-            isUntracked: true
-        });
-    }
-
-    // Jami to'lov — haqiqiy jami farqni ishlatamiz (agar ijobiy bo'lsa)
-    const totalPayment = realTotalPayment > 0 ? realTotalPayment : trackedPayment;
 
     // Sort by payment amount (highest first)
     payments.sort((a, b) => b.payment - a.payment);
@@ -893,7 +911,7 @@ function showPayments(currency) {
         tableWrapper.classList.remove('hidden');
 
         tbody.innerHTML = payments.map((p, i) => `
-            <tr class="${p.fullyPaid ? 'fully-paid-row' : ''}${p.isUntracked ? ' untracked-row' : ''}">
+            <tr class="${p.fullyPaid ? 'fully-paid-row' : ''}">
                 <td>${i + 1}</td>
                 <td>${p.agent}</td>
                 <td>${p.client}${p.fullyPaid ? ' <span class="fully-paid-badge">✅ To\'landi</span>' : ''}</td>
