@@ -774,7 +774,12 @@ function showPayments(currency) {
     }
 
     const payments = [];
-    let totalPayment = 0;
+    let trackedPayment = 0; // Individual klientlar bo'yicha hisoblangan to'lov
+
+    // ====== Haqiqiy jami farq (updateDebtChange bilan bir xil) ======
+    const prevTotal = previousData.reduce((sum, a) => sum + (currency === 'usd' ? (a.totalUSD || 0) : (a.totalUZS || 0)), 0);
+    const currentTotal = agentsData.reduce((sum, a) => sum + (currency === 'usd' ? (a.totalUSD || 0) : (a.totalUZS || 0)), 0);
+    const realTotalPayment = prevTotal - currentTotal; // Haqiqiy jami kamayish
 
     // Compare current data with previous data
     for (const agent of agentsData) {
@@ -801,7 +806,7 @@ function showPayments(currency) {
                     currency: currency,
                     fullyPaid: false
                 });
-                totalPayment += payment;
+                trackedPayment += payment;
             }
         }
     }
@@ -832,10 +837,28 @@ function showPayments(currency) {
                     currency: currency,
                     fullyPaid: true
                 });
-                totalPayment += prevAmount;
+                trackedPayment += prevAmount;
             }
         }
     }
+
+    // ====== Topilmagan farq — nom mos kelmagan to'lovlar ======
+    // Agar haqiqiy jami to'lov > individual to'lovlar yig'indisi bo'lsa,
+    // demak ba'zi klient nomlari mos kelmagan
+    const untrackedPayment = realTotalPayment - trackedPayment;
+    if (untrackedPayment > 0.01) {
+        payments.push({
+            agent: '—',
+            client: 'Boshqa to\'lovlar (nom farqi)',
+            payment: untrackedPayment,
+            currency: currency,
+            fullyPaid: false,
+            isUntracked: true
+        });
+    }
+
+    // Jami to'lov — haqiqiy jami farqni ishlatamiz (agar ijobiy bo'lsa)
+    const totalPayment = realTotalPayment > 0 ? realTotalPayment : trackedPayment;
 
     // Sort by payment amount (highest first)
     payments.sort((a, b) => b.payment - a.payment);
@@ -870,7 +893,7 @@ function showPayments(currency) {
         tableWrapper.classList.remove('hidden');
 
         tbody.innerHTML = payments.map((p, i) => `
-            <tr class="${p.fullyPaid ? 'fully-paid-row' : ''}">
+            <tr class="${p.fullyPaid ? 'fully-paid-row' : ''}${p.isUntracked ? ' untracked-row' : ''}">
                 <td>${i + 1}</td>
                 <td>${p.agent}</td>
                 <td>${p.client}${p.fullyPaid ? ' <span class="fully-paid-badge">✅ To\'landi</span>' : ''}</td>
