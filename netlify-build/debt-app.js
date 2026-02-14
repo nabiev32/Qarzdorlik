@@ -10,6 +10,7 @@ const APP_PASSWORD = '1';
 let agentsData = [];
 let previousData = null;
 let clientComments = {};
+let lastPaymentsData = null; // To'lovlar eksport uchun
 let allHistoricalData = []; // Barcha yuklangan excel ma'lumotlari
 
 // Initialize
@@ -924,6 +925,9 @@ function showPayments(currency) {
         `).join('');
     }
 
+    // Eksport uchun saqlash
+    lastPaymentsData = { payments, totalPayment, currency };
+
     document.getElementById('paymentsModal').classList.remove('hidden');
     document.body.style.overflow = 'hidden';
 }
@@ -931,6 +935,55 @@ function showPayments(currency) {
 function closePaymentsModal() {
     document.getElementById('paymentsModal').classList.add('hidden');
     document.body.style.overflow = '';
+}
+
+// Excel'ga eksport qilish
+function exportPaymentsToExcel() {
+    if (!lastPaymentsData || lastPaymentsData.payments.length === 0) {
+        alert("Eksport qilish uchun ma'lumot yo'q");
+        return;
+    }
+
+    const { payments, totalPayment, currency } = lastPaymentsData;
+
+    // Ma'lumotlarni tayyorlash
+    const rows = payments.map((p, i) => ({
+        '№': i + 1,
+        'Agent': p.agent,
+        'Klient': p.client + (p.fullyPaid ? ' ✅ To\'landi' : ''),
+        'To\'lov': p.payment
+    }));
+
+    // Jami qator
+    rows.push({
+        '№': '',
+        'Agent': '',
+        'Klient': 'JAMI:',
+        'To\'lov': totalPayment
+    });
+
+    // Excel yaratish
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    // Ustun kengliklarini sozlash
+    ws['!cols'] = [
+        { wch: 5 },   // №
+        { wch: 25 },  // Agent
+        { wch: 35 },  // Klient
+        { wch: 15 }   // To'lov
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const sheetName = currency === 'usd' ? 'USD Tolovlar' : 'UZS Tolovlar';
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+    // Fayl nomini yaratish
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0];
+    const fileName = `Tolovlar_${currency.toUpperCase()}_${dateStr}.xlsx`;
+
+    // Yuklab olish
+    XLSX.writeFile(wb, fileName);
 }
 
 // ============ TARIX (HISTORY) FUNKSIYALARI ============

@@ -1097,6 +1097,30 @@ tr:hover td {
     color: var(--text-primary);
 }
 
+.modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.excel-export-btn {
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.excel-export-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(52, 199, 89, 0.4);
+}
+
 .modal-close {
     width: 32px;
     height: 32px;
